@@ -1,4 +1,4 @@
-## inde.js
+## index.js
 
 This report runs at 3 AM (VCR server time zone)
 
