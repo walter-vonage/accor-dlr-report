@@ -1,0 +1,38 @@
+# Node modules
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+build/
+coverage/
+
+# Editor-specific
+.vscode/
+.idea/
+
+# Optional: ignore uploads or temp folders
+uploads/
+tmp/
+temp/
