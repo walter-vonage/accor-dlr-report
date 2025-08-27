@@ -1,0 +1,15 @@
+project:
+    name: accor-tracking
+instance:
+    name: dev
+    runtime: nodejs18
+    region: aws.euw1
+    application-id: e540f972-cc5e-4b52-8295-310f0055a5a3
+    entrypoint:
+        - node
+        - index.js
+debug:
+    application-id: e540f972-cc5e-4b52-8295-310f0055a5a3
+    entrypoint:
+        - node
+        - index.js

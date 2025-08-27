@@ -11,16 +11,20 @@
  * TO RUN NOW: node index.js --now
  * Runs now
  */
+import express from 'express';
 import * as fs from 'fs';                   
 import * as fsPromises from 'fs/promises';  
 import path from 'path';
 import fetch from 'node-fetch';
-import cron from 'node-cron';
+import * as Utils from './utils.js';
+
+const app = express();
+const PORT =  process.env.VCR_PORT || 3000;
 
 // CONFIG - Uses values for the account in VCR
-const API_KEY = process.env.VONAGE_API_KEY;
-const API_SECRET = process.env.VONAGE_API_SECRET;
-const ACCOUNT_ID = process.env.VONAGE_API_KEY;
+const API_KEY = process.env.VCR_API_ACCOUNT_ID;
+const API_SECRET = process.env.VCR_API_ACCOUNT_SECRET;
+const ACCOUNT_ID = process.env.VCR_API_ACCOUNT_ID;
 const DOWNLOAD_DIR = path.resolve('./data');
 const PUSH_URL = 'https://neru-cb28378f-marketing-cloud-apis-dev.euw1.runtime.vonage.cloud/tracking/bulk';
 
@@ -38,6 +42,7 @@ async function runJob() {
         const fileId = await pollReportStatus(requestId);
         const filePath = await downloadCSV(fileId, startDate);
         const records = parseCSV(filePath);
+        console.log('Total records to process: ' + records?.length)
 
         //  Process the CSV
         await processArrayWithSleep(records.slice(1));
@@ -55,7 +60,7 @@ async function runJob() {
 
 // 1. Generate Report
 async function generateReport(startDate, endDate) {
-    const username = API_KEY;
+    const username = API_KEY ;
     const password = API_SECRET;
     const basicAuth = Buffer.from(`${username}:${password}`).toString('base64');
 
@@ -171,7 +176,7 @@ async function processArrayWithSleep(arr) {
 
     for (let i = 0; i < arr.length; i++) {
         const row = arr[i];
-        if (row[12] === 'service') continue;
+        if (row[11] === 'service') continue;
 
         items.push({
             to: row[5],
@@ -204,8 +209,31 @@ async function sendRequest(items) {
     console.log('Server response:', text.slice(0, 200));
 }
 
-// Schedule: Run daily at 3AM
-cron.schedule('0 3 * * *', runJob);
+//  CRON
+app.get('/cron-runner', async (req, res) => {
+    console.log('cron-runner called')
+    // console.log('API_KEY', API_KEY);
+    // console.log('API_SECRET', API_SECRET);
+    // console.log('ACCOUNT_ID', ACCOUNT_ID);
+
+    //  We run this every minute
+    const now = new Date();
+    const hours = now.getHours();   // 0–23
+    const minutes = now.getMinutes(); // 0–59
+    
+    // Run only once at 03:00 (server local time)
+    if (hours === 3 && minutes === 0) {
+        await runJob();
+    }
+
+    // We call ourselves again in a minute
+    Utils.callCronCheckAgain();
+
+    //  Return
+    res.json({ success: true, message: 'Checked and triggered eligible cron jobs' });
+})
+
+
 
 // Manual run (for debug)
 if (process.argv.includes('--now')) runJob();
@@ -221,3 +249,12 @@ function getYesterdayRange() {
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+app.get('/_/health', async (req, res) => {
+    res.sendStatus(200)
+})
+
+app.listen(PORT, () => {
+    console.log(`Server running on ${PORT}`);
+    Utils.callCronCheckAgain();
+});
