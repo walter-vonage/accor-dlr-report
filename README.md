@@ -41,7 +41,7 @@ Then restart the cron by clicking here:
 https://neru-cb28378f-accor-tracking-dev.euw1.runtime.vonage.cloud/restart-cron
 ```
 
-## Run the report for any date
+## Run the report for any date
 If any date is missing from the report, you can run it manually, like this (from any browser)
 ```
 https://neru-cb28378f-accor-tracking-dev.euw1.runtime.vonage.cloud/run-job-date/2025-10-07
