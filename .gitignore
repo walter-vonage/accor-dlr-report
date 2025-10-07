@@ -36,3 +36,5 @@ coverage/
 uploads/
 tmp/
 temp/
+
+config.js

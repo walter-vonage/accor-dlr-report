@@ -17,6 +17,7 @@ import * as fsPromises from 'fs/promises';
 import path from 'path';
 import fetch from 'node-fetch';
 import * as Utils from './utils.js';
+import { sendReportEmail } from './send_email.js';
 
 const app = express();
 const PORT =  process.env.VCR_PORT || 3000;
@@ -28,34 +29,55 @@ const ACCOUNT_ID = process.env.VCR_API_ACCOUNT_ID;
 const DOWNLOAD_DIR = path.resolve('./data');
 const PUSH_URL = 'https://neru-cb28378f-marketing-cloud-apis-dev.euw1.runtime.vonage.cloud/tracking/bulk';
 
+let isRunning = false;
+
 /**
  * THIS IS THE MAIN FUNCTION
  * RUNNING AS SCHEDULED
  */
 async function runJob() {
-    try {
-        const { startDate, endDate } = getYesterdayRange();
-        console.log(`Fetching report for: ${startDate}`);
-
-        //  Generate the report with Vonage Reports API
-        const requestId = await generateReport(startDate, endDate);
-        const fileId = await pollReportStatus(requestId);
-        const filePath = await downloadCSV(fileId, startDate);
-        const records = parseCSV(filePath);
-        console.log('Total records to process: ' + records?.length)
-
-        //  Process the CSV
-        await processArrayWithSleep(records.slice(1));
-        console.log('Job complete!');
-
-        // Rename CSV file to prevent reprocessing
-        const donePath = filePath + '.done';
-        await fsPromises.rename(filePath, donePath);
-        console.log(`Renamed CSV to: ${donePath}`);
-
-    } catch (err) {
-        console.error('Job failed:', err.message);
+    if (isRunning) {
+        console.warn('Job is already running. Skipping this trigger.');
+        return;
     }
+    isRunning = true;
+    try {
+        for (let retries = 0; retries < 3; retries++) {
+            try {
+                await doTheJob(); 
+                await sendReportEmail('Accor process finished');
+                break;
+            } catch (err) {
+                console.error(`Attempt ${retries + 1} failed: ${err.message}`);
+                if (retries === 2) {
+                    await sendReportEmail('Job failed!! -> ' + err.message);
+                }
+            }
+        }
+    } finally {
+        isRunning = false;
+    }
+}
+
+async function doTheJob() {
+    const { startDate, endDate } = getYesterdayRange();
+    console.log(`Fetching report for: ${startDate}`);
+
+    //  Generate the report with Vonage Reports API
+    const requestId = await generateReport(startDate, endDate);
+    const fileId = await pollReportStatus(requestId);
+    const filePath = await downloadCSV(fileId, startDate);
+    const records = parseCSV(filePath);
+    console.log('Total records to process: ' + records?.length)
+
+    //  Process the CSV
+    await processArrayWithSleep(records.slice(1));
+    console.log('Job complete!');
+
+    // Rename CSV file to prevent reprocessing
+    const donePath = filePath + '.done';
+    await fsPromises.rename(filePath, donePath);
+    console.log(`Renamed CSV to: ${donePath}`);
 }
 
 // 1. Generate Report
@@ -209,6 +231,18 @@ async function sendRequest(items) {
     console.log('Server response:', text.slice(0, 200));
 }
 
+app.get('/run-job', async (req, res) => {
+    if (isRunning) {
+        return res.status(409).json({ success: false, message: 'Job is already running.' });
+    }
+    try {
+        await runJob(); // Wait for job to finish
+        res.json({ success: true, message: 'Job completed (or attempted).' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Job failed', error: err.message });
+    }
+})
+
 //  CRON
 app.get('/cron-runner', async (req, res) => {
     console.log('cron-runner called')
@@ -233,7 +267,59 @@ app.get('/cron-runner', async (req, res) => {
     res.json({ success: true, message: 'Checked and triggered eligible cron jobs' });
 })
 
+/**
+ * CHECK THE STATUS OF OUR CROn JOb
+ */
+app.get('/cron-status', async (req, res) => {
+    try {
+        const pathToHeartbeat = path.resolve('./cron-heartbeat.txt');
+        const lastHeartbeat = fs.readFileSync(pathToHeartbeat, 'utf-8');
+        const lastDate = new Date(lastHeartbeat);
+        const now = new Date();
 
+        const diffMinutes = Math.floor((now - lastDate) / 1000 / 60);
+
+        const running = diffMinutes < 3; // consider "dead" if no heartbeat in last 3 min
+        const ageMinutes = diffMinutes;
+        res.send(`<table border="1" cellpadding="5">
+            <tr>
+                <td><strong>Running:</strong></td>
+                <td>${running}</td>
+            </tr>
+            <tr>
+                <td><strong>Last heartbeat:</strong></td>
+                <td>${lastHeartbeat}</td>
+            </tr>
+            <tr>
+                <td><strong>Age (minutes):</strong></td>
+                <td>${ageMinutes}</td>
+            </tr>
+        </table>`)
+    } catch (e) {
+        res.send(`
+            <h1>No heartbeat file found</h1>
+            <p style="color:red">Cron may have stopped. Click to restart:</p>
+            <a href="/restart-cron">/restart-cron</a>
+        `);
+    }
+});
+
+/**
+ * CRON MANUAL RESTART
+ */
+app.get('/restart-cron', async (req, res) => {
+    Utils.callCronCheckAgain();
+    res.json({ success: true, message: 'Cron loop restarted manually.' });
+});
+
+
+/**
+ * JUST TEST THE EMAIL SENDER WITH A DUMMY TEXT
+ */
+app.get('/test-email', async (req, res) => {
+    sendReportEmail(`This is a test. Don't need to take any action`)
+    res.send('Email sent');
+});
 
 // Manual run (for debug)
 if (process.argv.includes('--now')) runJob();

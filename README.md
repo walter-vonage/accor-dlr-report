@@ -27,3 +27,16 @@ node index.js --now
 ```
 And you should see log in your console.
 
+## Check cron status
+Call this entrypoint from any browser: 
+```
+https://neru-cb28378f-accor-tracking-dev.euw1.runtime.vonage.cloud/cron-status
+```
+If the cron is not running or if you see a message like:
+```
+No heartbeat file found
+```
+Then restart the cron by clicking here:
+```
+https://neru-cb28378f-accor-tracking-dev.euw1.runtime.vonage.cloud/restart-cron
+```
