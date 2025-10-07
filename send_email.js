@@ -11,26 +11,21 @@ const transporter = nodemailer.createTransport({
 });
 
 export async function sendReportEmail(data) {  
-
     const currentDate = new Date();
-
-    const options = {
-        weekday: 'long', // Full weekday name (e.g., "Tuesday")
-        month: 'long',   // Full month name (e.g., "October")
-        day: 'numeric'   // Day of the month (e.g., "7")
-    };
-    
-    // Use the Intl.DateTimeFormat object for robust, locale-aware formatting.
+    const options = { year: 'numeric', month: '2-digit', day: '2-digit' };
     const formattedDate = new Intl.DateTimeFormat('en-US', options).format(currentDate);
-    
+    const subject = `Report for ${formattedDate}`;
+    await sendReportEmailTo('martin.fort@vonage.com', subject, data)
+    await sendReportEmailTo('walter.rodriguez@vonage.com', subject, data)
+}
+
+export async function sendReportEmailTo(destination, subject, body, opts = {}) {      
     const mailOptions = {
         from: `"Accor Tracking Report" <${EMAIL_USER}>`,
-        to: 'martin.fort@vonage.com',
-        cc: 'walter.rodriguez@vonage.com',
-        subject: `Report for ${formattedDate}`,
-        text: data,
+        to: destination,
+        subject,
+        ...(opts.isHtml ? { html: body } : { text: body }),
     };
-
     await transporter.sendMail(mailOptions);
-    console.log(`Email sent`);
+    console.log(`Email sent to ${destination}`);
 }

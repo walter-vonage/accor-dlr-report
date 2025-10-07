@@ -17,7 +17,7 @@ import * as fsPromises from 'fs/promises';
 import path from 'path';
 import fetch from 'node-fetch';
 import * as Utils from './utils.js';
-import { sendReportEmail } from './send_email.js';
+import { sendReportEmail, sendReportEmailTo } from './send_email.js';
 
 const app = express();
 const PORT =  process.env.VCR_PORT || 3000;
@@ -59,25 +59,40 @@ async function runJob() {
     }
 }
 
-async function doTheJob() {
-    const { startDate, endDate } = getYesterdayRange();
-    console.log(`Fetching report for: ${startDate}`);
+async function doTheJob(optionalDate) {
+    // If a date was passed in, use it. Otherwise default to yesterday.
+    const { startDate, endDate } = optionalDate
+        ? { startDate: optionalDate, endDate: optionalDate }
+        : getYesterdayRange();
+    
+    const logs = [];
+    let log = `Fetching report for: ${startDate}`
+    logs.push(log);
+    console.log(log);
 
     //  Generate the report with Vonage Reports API
     const requestId = await generateReport(startDate, endDate);
     const fileId = await pollReportStatus(requestId);
     const filePath = await downloadCSV(fileId, startDate);
     const records = parseCSV(filePath);
-    console.log('Total records to process: ' + records?.length)
+    log = `Total records to process: ${records?.length}`
+    logs.push(log);
+    console.log(log)
 
     //  Process the CSV
-    await processArrayWithSleep(records.slice(1));
-    console.log('Job complete!');
+    await processArrayWithSleep(records.slice(1));    
+    log = `Job complete!`;
+    logs.push(log);
+    console.log(log);
 
     // Rename CSV file to prevent reprocessing
     const donePath = filePath + '.done';
     await fsPromises.rename(filePath, donePath);
-    console.log(`Renamed CSV to: ${donePath}`);
+    log = `Renamed CSV to: ${donePath}`;
+    logs.push(log);
+    console.log('log')
+    
+    return logs;
 }
 
 // 1. Generate Report
@@ -231,6 +246,9 @@ async function sendRequest(items) {
     console.log('Server response:', text.slice(0, 200));
 }
 
+/**
+ * Call this from a brwoser to start the cron jon
+ */
 app.get('/run-job', async (req, res) => {
     if (isRunning) {
         return res.status(409).json({ success: false, message: 'Job is already running.' });
@@ -312,6 +330,50 @@ app.get('/restart-cron', async (req, res) => {
     res.json({ success: true, message: 'Cron loop restarted manually.' });
 });
 
+/**
+ * This entry-point calls the process for any date
+ * Example: /run-job-date/2025-12-31
+ */
+app.get('/run-job-date/:date', async (req, res) => {
+    const jobDate = req.params.date; 
+    
+    // Basic format validation: YYYY-MM-DD
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(jobDate)) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Invalid date format. Use YYYY-MM-DD' 
+        });
+    }
+
+    res.json({ 
+        success: true, 
+        date: jobDate, 
+    });
+
+    (async () => {
+        try {
+            const logs = await doTheJob(jobDate);
+            await sendReportEmailTo(
+                'walter.rodriguez@vonage.com', 
+                `Report for ${jobDate}`,
+                `<h1>Job date: ${jobDate}</h1><pre>${logs.join('\n')}</pre>`,
+                { isHtml: true }
+            );
+        } catch (err) {
+            console.error(`Job for ${jobDate} failed:`, err.message);
+            try {
+                await sendReportEmailTo(
+                    'walter.rodriguez@vonage.com',
+                    `Report FAILED for ${jobDate}`,
+                    `<h1>Job failed for ${jobDate}</h1><p>${err.message}</p>`,
+                    { isHtml: true }
+                );
+            } catch (emailErr) {
+                console.error('Failed to send failure email:', emailErr.message);
+            }
+        }
+    })();
+});
 
 /**
  * JUST TEST THE EMAIL SENDER WITH A DUMMY TEXT
