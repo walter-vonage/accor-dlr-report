@@ -67,16 +67,9 @@ async function processArrayWithSleep(arr) {
         }
     }
 
-    console.log('Finished processing all items!');
+    const result = 'Finished processing all items!';    
+    console.log(result);
 }
-
-
-// Example usage
-
-
-
-
-
 
 
 async function sendRequest(items) {
@@ -85,7 +78,6 @@ async function sendRequest(items) {
     myHeaders.append("Content-Type", "application/json");
 
     const raw = JSON.stringify(items);
-
 
     const requestOptions = {
         method: "POST",
@@ -100,7 +92,6 @@ async function sendRequest(items) {
         .then((response) => response.text())
         .then((result) => console.log(result))
         .catch((error) => console.error(error));
-
 
 }
 
